@@ -1,6 +1,8 @@
 type Id = usize;
 type Token = String;
 
+const UNKNOWN_ID: Id = usize::MAX;
+
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -115,6 +117,34 @@ impl BPETokenizer {
             merges: merges,
         }
     }
+
+    fn encode(&self, text: &str) -> Vec<usize> {
+        let mut tokens: Vec<usize> = text
+            .chars()
+            .map(|ch| {
+                self.vocab
+                    .get_id(&ch.to_string())
+                    .unwrap_or(UNKNOWN_ID)
+            })
+            .collect();
+
+        for &(left, right, merged) in &self.merges {
+            tokens = apply_merge(&tokens, left, right, merged);
+        }
+
+        tokens
+    }
+
+    fn decode(&self, token_ids: &[usize]) -> String {
+        let mut result = String::new();
+        for &id in token_ids {
+            match self.vocab.get_token(id) {
+                Some(s) => result.push_str(s),
+                None => result.push_str("<unk>"),
+            }
+        }
+        result
+    }
 }
 
 fn apply_merge(tokens: &[Id], left: Id, right: Id, merged: Id) -> Vec<Id> {
@@ -139,4 +169,9 @@ fn main() {
     let tokenizer = BPETokenizer::train(&input, 500);
 
     println!("{:#?}", tokenizer);
+
+    let encoded = tokenizer.encode("Hello, World.");
+
+    println!("Encoding 'Hello, World.': {:?}", encoded);
+    println!("Decoded: {:?}", tokenizer.decode(&encoded));
 }
