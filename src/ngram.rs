@@ -18,15 +18,18 @@ impl NgramModel {
 
         let mut table: HashMap<Vec<Id>, HashMap<Id, usize>> = HashMap::new();
 
-        for i in 0..=tokens.len() - n {
-            let context = tokens[i..i + n - 1].to_vec();
-            let next = tokens[i + n - 1];
+        for order in 2..=n {
+            let ctx_len = order - 1;
+            for i in 0..=tokens.len() - order {
+                let context = tokens[i..i + ctx_len].to_vec();
+                let next = tokens[i + ctx_len];
 
-            *table
-                .entry(context)
-                .or_insert_with(HashMap::new)
-                .entry(next)
-                .or_insert(0) += 1;
+                *table
+                    .entry(context)
+                    .or_insert_with(HashMap::new)
+                    .entry(next)
+                    .or_insert(0) += 1;
+            }
         }
 
         println!(

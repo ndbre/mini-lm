@@ -2,7 +2,6 @@ mod io;
 mod ngram;
 mod tokenizer;
 
-use io::{load, save};
 use ngram::NgramModel;
 use tokenizer::BPETokenizer;
 use tokenizer::Id;

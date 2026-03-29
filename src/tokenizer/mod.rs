@@ -7,4 +7,3 @@ pub mod bpe;
 pub mod vocab;
 
 pub use bpe::*;
-pub use vocab::*;
