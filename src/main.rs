@@ -134,7 +134,6 @@ fn handle_generate(args: &[String]) {
     println!("Generating {} tokens...\n", num_tokens);
     let output_tokens = model.generate(&seed_tokens, num_tokens);
 
-    // The output includes the (padded) seed, so decode everything
     let output_text = tokenizer.decode(&output_tokens);
 
     println!("{}", "-".repeat(60));

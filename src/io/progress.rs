@@ -1,5 +1,8 @@
 use std::io::{self, Write};
 
+// This is code copied from one of my previous projects, so that is why it might seem a little different
+// compared to everything else.
+
 pub struct ProgressBarStyle {
     // Character used to fill the completed portion
     pub fill: char,
