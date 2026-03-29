@@ -102,11 +102,8 @@ fn weighted_sample(counts: &HashMap<Id, usize>) -> Id {
 fn main() {
     let input = std::fs::read_to_string("example.txt").unwrap();
 
-    // --- BPE Tokenizer ---
-    println!("=== BPE Tokenizer ===");
     let tokenizer = BPETokenizer::train(&input, 500);
 
-    // Round-trip on training text substring (all chars known)
     let sample = "To be, or not to be";
     let encoded = tokenizer.encode(sample);
     let decoded = tokenizer.decode(&encoded);
@@ -115,20 +112,16 @@ fn main() {
     println!("Decoded: {:?}", decoded);
     println!("Round-trip OK: {}", decoded == sample);
 
-    // Unknown character test
     let with_unknown = "Hello, World.";
     let enc_unk = tokenizer.encode(with_unknown);
     println!("\nInput with unknown char: {:?}", with_unknown);
     println!("Contains UNKNOWN_ID: {}", enc_unk.contains(&usize::MAX));
 
-    // --- N-gram Model ---
-    println!("\n=== N-gram Model (n=3) ===");
     let tokens: Vec<Id> = tokenizer.encode(&input);
     println!("Training token count: {}", tokens.len());
 
     let model = NgramModel::train(&tokens, 3);
 
-    // Seed with first 2 tokens of the training text
     let seed = &tokens[..2];
     let generated = model.generate(seed, 30);
     println!("Generated token IDs: {:?}", generated);
