@@ -1,129 +1,147 @@
-use std::collections::HashMap;
-
+mod io;
+mod ngram;
 mod tokenizer;
 
+use io::{load, save};
+use ngram::NgramModel;
 use tokenizer::BPETokenizer;
 use tokenizer::Id;
 
-struct NgramModel {
-    n: usize,
-    table: HashMap<Vec<Id>, HashMap<Id, usize>>,
-}
-
-impl NgramModel {
-    fn train(tokens: &[Id], n: usize) -> NgramModel {
-        assert!(n >= 2, "N must be at least 2.");
-        assert!(
-            tokens.len() >= n,
-            "Number of tokens must be more than N. (Training Data too small for N)"
-        );
-
-        let mut table: HashMap<Vec<Id>, HashMap<Id, usize>> = HashMap::new();
-
-        for i in 0..=tokens.len() - n {
-            let context = tokens[i..i + n - 1].to_vec();
-            let next = tokens[i + n - 1];
-
-            *table
-                .entry(context)
-                .or_insert_with(HashMap::new)
-                .entry(next)
-                .or_insert(0) += 1;
-        }
-
-        println!(
-            "N-gram training complete. n = {}. unique contexts: {}",
-            n,
-            table.len()
-        );
-
-        NgramModel { n, table }
-    }
-
-    fn generate(&self, seed: &[Id], num_tokens: usize) -> Vec<Id> {
-        let context_len = self.n - 1;
-
-        let mut output: Vec<Id> = seed.to_vec();
-        assert!(!output.is_empty(), "There must be a seed phrase.");
-
-        while output.len() < context_len {
-            let first = output[0];
-            output.insert(0, first); // Pad begining with first character to fit context len.
-        }
-
-        let mut backoff_count = 0usize;
-
-        for _ in 0..num_tokens {
-            let mut next_token = None;
-            for backoff in 0..context_len {
-                let ctx_start = output.len() - (context_len - backoff);
-                let ctx = output[ctx_start..].to_vec();
-                if let Some(counts) = self.table.get(&ctx) {
-                    next_token = Some(weighted_sample(counts));
-                    if backoff > 0 {
-                        backoff_count += 1;
-                    }
-                    break;
-                }
-            }
-
-            match next_token {
-                None => break,
-                Some(t) => output.push(t),
-            }
-        }
-
-        if backoff_count > 0 {
-            println!(
-                "Backed off to shorter context {} time(s) while generating.",
-                backoff_count
-            );
-        }
-
-        output
-    }
-}
-
-fn weighted_sample(counts: &HashMap<Id, usize>) -> Id {
-    let total: usize = counts.values().sum();
-    let threshold = rand::random_range(0..total);
-
-    let mut cumulative = 0usize;
-    for (&token_id, &count) in counts.iter() {
-        cumulative += count;
-        if cumulative > threshold {
-            return token_id;
-        }
-    }
-
-    *counts.keys().next().unwrap()
-}
+use std::env;
+use std::fs;
+use std::process;
 
 fn main() {
-    let input = std::fs::read_to_string("example.txt").unwrap();
+    let args: Vec<String> = env::args().collect();
 
-    let tokenizer = BPETokenizer::train(&input, 500);
+    if args.len() < 2 {
+        print_usage();
+        process::exit(1);
+    }
 
-    let sample = "To be, or not to be";
-    let encoded = tokenizer.encode(sample);
-    let decoded = tokenizer.decode(&encoded);
-    println!("Input:   {:?}", sample);
-    println!("Encoded: {:?}", encoded);
-    println!("Decoded: {:?}", decoded);
-    println!("Round-trip OK: {}", decoded == sample);
+    match args[1].as_str() {
+        "train" => handle_train(&args),
+        "generate" => handle_generate(&args),
+        _ => {
+            eprintln!("Unknown command: {}", args[1]);
+            print_usage();
+            process::exit(1);
+        }
+    }
+}
 
-    let with_unknown = "Hello, World.";
-    let enc_unk = tokenizer.encode(with_unknown);
-    println!("\nInput with unknown char: {:?}", with_unknown);
-    println!("Contains UNKNOWN_ID: {}", enc_unk.contains(&usize::MAX));
+fn print_usage() {
+    println!("Usage:");
+    println!("\tmini-lm train    <input file> <output file> <num merges> <N>");
+    println!("\tmini-lm generate <model file> <seed phrase> <num tokens>")
+}
 
-    let tokens: Vec<Id> = tokenizer.encode(&input);
-    println!("Training token count: {}", tokens.len());
+fn parse_usize(s: &str, name: &str) -> usize {
+    s.parse::<usize>().unwrap_or_else(|_| {
+        eprintln!("error: '{}' must be a positive integer, got {:?}", name, s);
+        process::exit(1);
+    })
+}
 
-    let model = NgramModel::train(&tokens, 3);
+fn handle_train(args: &[String]) {
+    if args.len() < 6 {
+        eprintln!("Error: 'train' requires 4 arguments.");
+        print_usage();
+        process::exit(1);
+    }
 
-    let seed = &tokens[..2];
-    let generated = model.generate(seed, 30);
-    println!("Generated token IDs: {:?}", generated);
-    println!("Generated text: {:?}", tokenizer.decode(&generated));
+    let input_file = &args[2];
+    let model_output = &args[3];
+    let num_merges: usize = parse_usize(&args[4], "num_merges");
+    let n: usize = parse_usize(&args[5], "n");
+
+    if n < 2 {
+        eprintln!("Error: n must be at least 2.");
+        process::exit(1);
+    }
+
+    println!("Reading input file: {}", input_file);
+    let text = fs::read_to_string(input_file).unwrap_or_else(|e| {
+        eprintln!("Error reading {}: {}", input_file, e);
+        process::exit(1);
+    });
+
+    println!("Input: {} characters, {} unique chars", text.len(), {
+        let mut chars: Vec<char> = text.chars().collect();
+        chars.sort();
+        chars.dedup();
+        chars.len()
+    });
+
+    println!(
+        "\nStep 1/3 - Training BPE tokenizer (num_merges={})...",
+        num_merges
+    );
+    let tokenizer = BPETokenizer::train(&text, num_merges);
+
+    println!("\nStep 2/3 - Encoding corpus with trained tokenizer...");
+    let tokens = tokenizer.encode(&text);
+    println!("  {} characters -> {} tokens", text.len(), tokens.len());
+    println!(
+        "  Compression ratio: {:.2}x",
+        text.len() as f64 / tokens.len() as f64
+    );
+
+    println!("\nStep 3/3 - Training N-gram model (n={})...", n);
+    let model = NgramModel::train(&tokens, n);
+
+    println!("\nSaving model to: {}", model_output);
+    io::save(model_output, &tokenizer, &model).unwrap_or_else(|e| {
+        eprintln!("Error saving model: {}", e);
+        process::exit(1);
+    });
+
+    println!("\nDone!");
+    println!("  Vocab size:       {}", tokenizer.vocab.size());
+    println!("  Merge rules:      {}", tokenizer.merges.len());
+    println!("  N-gram order:     {}", model.n);
+    println!("  Unique contexts:  {}", model.table.len());
+}
+
+fn handle_generate(args: &[String]) {
+    // bpe_ngram generate <model_file> <seed_text> <num_tokens>
+    if args.len() < 5 {
+        eprintln!("Error: 'generate' requires 3 arguments.");
+        print_usage();
+        process::exit(1);
+    }
+
+    let model_file = &args[2];
+    let seed_text = &args[3];
+    let num_tokens: usize = parse_usize(&args[4], "num_tokens");
+
+    println!("Loading model from: {}", model_file);
+    let (tokenizer, model) = io::load(model_file).unwrap_or_else(|e| {
+        eprintln!("Error loading model: {}", e);
+        process::exit(1);
+    });
+
+    println!("Encoding seed: {:?}", seed_text);
+    let seed_tokens = tokenizer.encode(seed_text);
+
+    if seed_tokens.is_empty() {
+        eprintln!(
+            "Error: seed text produced no tokens. Make sure the seed characters exist in the training vocab."
+        );
+        process::exit(1);
+    }
+
+    println!("Generating {} tokens...\n", num_tokens);
+    let output_tokens = model.generate(&seed_tokens, num_tokens);
+
+    // The output includes the (padded) seed, so decode everything
+    let output_text = tokenizer.decode(&output_tokens);
+
+    println!("{}", "-".repeat(60));
+    println!("{}", output_text);
+    println!("{}", "-".repeat(60));
+    println!(
+        "\n({} tokens generated)",
+        output_tokens.len().saturating_sub(seed_tokens.len())
+    );
 }

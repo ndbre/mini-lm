@@ -1,11 +1,13 @@
 use super::vocab::Vocab;
-use super::{Id, Token, UNKNOWN_ID};
+use super::{Id, UNKNOWN_ID};
+use crate::io::{ProgressBar, ProgressBarStyle};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BPETokenizer {
-    vocab: Vocab,
-    merges: Vec<(Id, Id, Id)>,
+    pub vocab: Vocab,
+    pub merges: Vec<(Id, Id, Id)>,
 }
 
 impl BPETokenizer {
@@ -22,6 +24,8 @@ impl BPETokenizer {
             .collect();
 
         let mut merges: Vec<(Id, Id, Id)> = Vec::new();
+
+        let bar = ProgressBar::new(num_merges as u64, ProgressBarStyle::default());
 
         for merge_idx in 0..num_merges {
             if tokens.len() < 2 {
@@ -61,13 +65,16 @@ impl BPETokenizer {
             merges.push((best_pair.0, best_pair.1, new_id));
 
             tokens = apply_merge(&tokens, best_pair.0, best_pair.1, new_id);
-        }
 
-        println!(
+            if (merge_idx + 1) % 10 == 0 || merge_idx == 0 {
+                bar.update(merge_idx as u64 + 1);
+            }
+        }
+        bar.finish(format!(
             "Finished Training BPE Tokenizer with a Vocab size of {} after {} Merges.",
             vocab.size(),
             merges.len()
-        );
+        ));
 
         BPETokenizer {
             vocab: vocab,
@@ -78,11 +85,7 @@ impl BPETokenizer {
     pub fn encode(&self, text: &str) -> Vec<usize> {
         let mut tokens: Vec<usize> = text
             .chars()
-            .map(|ch| {
-                self.vocab
-                    .get_id(&ch.to_string())
-                    .unwrap_or(UNKNOWN_ID)
-            })
+            .map(|ch| self.vocab.get_id(&ch.to_string()).unwrap_or(UNKNOWN_ID))
             .collect();
 
         for &(left, right, merged) in &self.merges {

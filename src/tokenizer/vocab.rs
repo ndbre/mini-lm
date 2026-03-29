@@ -1,7 +1,8 @@
+use super::{Id, Token};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use super::{UNKNOWN_ID, Id, Token};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Vocab {
     token_to_id: HashMap<Token, Id>,
     id_to_token: HashMap<Id, Token>,
