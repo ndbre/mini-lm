@@ -34,15 +34,6 @@ impl Default for ProgressBarStyle {
     }
 }
 
-impl ProgressBarStyle {
-    pub fn with_label(label: &str) -> Self {
-        Self {
-            label: Some(label.to_string()),
-            ..Default::default()
-        }
-    }
-}
-
 pub struct ProgressBar {
     total: u64,
     style: ProgressBarStyle,

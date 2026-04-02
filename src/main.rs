@@ -9,6 +9,7 @@ use tokenizer::Id;
 use std::env;
 use std::fs;
 use std::process;
+use std::time;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -72,22 +73,34 @@ fn handle_train(args: &[String]) {
         chars.len()
     });
 
+    let mut start = time::Instant::now();
     println!(
-        "\nStep 1/3 - Training BPE tokenizer (num_merges={})...",
+        "\n\x1b[1mStep 1/3\x1b[0m - Training BPE tokenizer (num_merges={})...",
         num_merges
     );
     let tokenizer = BPETokenizer::train(&text, num_merges);
+    let mut elapsed_time = start.elapsed();
+    println!("Step 1 took {}s.", elapsed_time.as_secs());
 
-    println!("\nStep 2/3 - Encoding corpus with trained tokenizer...");
+    start = time::Instant::now();
+    println!("\n\x1b[1mStep 2/3\x1b[0m - Encoding corpus with trained tokenizer...");
     let tokens = tokenizer.encode(&text);
     println!("  {} characters -> {} tokens", text.len(), tokens.len());
     println!(
         "  Compression ratio: {:.2}x",
         text.len() as f64 / tokens.len() as f64
     );
+    elapsed_time = start.elapsed();
+    println!("Step 2 took {}s.", elapsed_time.as_secs());
 
-    println!("\nStep 3/3 - Training N-gram model (n={})...", n);
+    start = time::Instant::now();
+    println!(
+        "\n\x1b[1mStep 3/3\x1b[0m - Training N-gram model (n={})...",
+        n
+    );
     let model = NgramModel::train(&tokens, n);
+    elapsed_time = start.elapsed();
+    println!("Step 3 took {}s.", elapsed_time.as_secs());
 
     println!("\nSaving model to: {}", model_output);
     io::save(model_output, &tokenizer, &model).unwrap_or_else(|e| {
@@ -103,7 +116,6 @@ fn handle_train(args: &[String]) {
 }
 
 fn handle_generate(args: &[String]) {
-    // bpe_ngram generate <model_file> <seed_text> <num_tokens>
     if args.len() < 5 {
         eprintln!("Error: 'generate' requires 3 arguments.");
         print_usage();

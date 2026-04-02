@@ -1,4 +1,5 @@
 use super::Id;
+use crate::io::{ProgressBar, ProgressBarStyle};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -18,6 +19,8 @@ impl NgramModel {
 
         let mut table: HashMap<Vec<Id>, HashMap<Id, usize>> = HashMap::new();
 
+        let bar = ProgressBar::new(tokens.len() as u64, ProgressBarStyle::default());
+
         for order in 2..=n {
             let ctx_len = order - 1;
             for i in 0..=tokens.len() - order {
@@ -29,20 +32,20 @@ impl NgramModel {
                     .or_insert_with(HashMap::new)
                     .entry(next)
                     .or_insert(0) += 1;
+
+                if (i + 1) % 10 == 0 || i == 0 {
+                    bar.update(i as u64 + 1);
+                }
             }
         }
 
-        println!(
+        bar.finish(format!(
             "N-gram training complete. n = {}. unique contexts: {}",
             n,
             table.len()
-        );
+        ));
 
         NgramModel { n, table }
-    }
-
-    pub fn n_contexts(&self) -> usize {
-        self.table.len()
     }
 
     pub fn generate(&self, seed: &[Id], num_tokens: usize) -> Vec<Id> {
